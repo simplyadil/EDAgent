@@ -1,0 +1,9 @@
+streamlit                # Web app framework
+langchain                # LLM orchestration
+langchain-google-genai   # Gemini integration
+langgraph                # Agent workflow orchestration
+google-generativeai      # Gemini API access
+pandas                   # Data manipulation
+plotly                   # Interactive visualizations
+missingno                # Missing data visualization
+
