@@ -10,23 +10,18 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
-import html
-import os
-import sys
 from pathlib import Path
+import html
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Add the project root to the Python path
-sys.path.append(str(Path(__file__).parent.parent))
-
-from agents.eda_agent import EDA_Agent
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain_google_genai import ChatGoogleGenerativeAI
-import google.generativeai as genai
-
+from agents.eda_agent import EDAToolsAgent
 from utils.matplotlib import matplotlib_from_base64
 from utils.plotly import plotly_from_dict
-
-
+import google.generativeai as genai
 
 
 # Helpers
@@ -125,14 +120,22 @@ def render_report_iframe(
 # STREAMLIT APP SETUP (including data upload, API key, etc.)
 # =============================================================================
 
+# =============================
+# Hardcoded Google API Key (replace with your actual key)
+# =============================
+GOOGLE_API_KEY = "AIzaSyDUa-_8swPWfOVp2avPaRetesKKyRh0cvw"  # <-- Replace this!
 MODEL_LIST = ["gemini-2.0-flash", "gemini-1.5-pro"]
+MODEL_NAME = MODEL_LIST[0]
+
+genai.configure(api_key=GOOGLE_API_KEY)
+
 TITLE = "Your Exploratory Data Analysis (EDA) Copilot"
 st.set_page_config(page_title=TITLE, page_icon="📊")
 st.title("📊 " + TITLE)
 
 st.markdown("""
-Welcome to the EDA Copilot. This AI agent is designed to help you find and load data
-and return exploratory analysis reports that can be used to understand the data
+Welcome to the EDA Copilot. This AI agent is designed to help you find and load data 
+and return exploratory analysis reports that can be used to understand the data 
 prior to other analysis (e.g. modeling, feature engineering, etc).
 """)
 
@@ -160,7 +163,7 @@ if "DATA_RAW" not in st.session_state:
     st.session_state["DATA_RAW"] = None
 
 if use_demo_data:
-    demo_file_path = Path("data/churn_data.csv")
+    demo_file_path = Path("sample_data/churn_data.csv")
     if demo_file_path.exists():
         df = pd.read_csv(demo_file_path)
         file_name = "churn_data"
@@ -187,35 +190,9 @@ else:
     else:
         st.info("Please upload a CSV or Excel file or Use Demo Data to proceed.")
 
-# Sidebar: Google API Key and Model Selection
-st.sidebar.header("Enter your Google API Key")
-api_key = st.sidebar.text_input(
-    "API Key",
-    type="password",
-    help="Your Google API key is required for the app to function.",
-)
-
-if api_key:
-    # Store the API key in session state
-    st.session_state["GOOGLE_API_KEY"] = api_key
-
-    try:
-        # Configure the Google Generative AI with the API key
-        genai.configure(api_key=api_key)
-        # Test the API key by listing models
-        model_list = genai.list_models()
-        st.success("API Key is valid!")
-
-        # Create the LLM with the valid API key
-        model_option = st.sidebar.selectbox("Choose Gemini model", MODEL_LIST, index=0)
-        GEMINI_LLM = ChatGoogleGenerativeAI(model=model_option, google_api_key=api_key)
-        llm = GEMINI_LLM
-    except Exception as e:
-        st.error(f"Invalid API Key: {e}")
-        st.stop()
-else:
-    st.info("Please enter your Google API Key to proceed.")
-    st.stop()
+# Sidebar: Gemini Model Selection
+model_option = st.sidebar.selectbox("Choose Gemini model", MODEL_LIST, index=0)
+llm = ChatGoogleGenerativeAI(model=model_option, google_api_key=GOOGLE_API_KEY)
 
 # =============================================================================
 # CHAT MESSAGE HISTORY AND ARTIFACT STORAGE
@@ -287,13 +264,7 @@ def process_exploratory(question: str, llm, data: pd.DataFrame) -> dict:
     Initializes and calls the EDA agent using the provided question and data.
     Processes any returned artifacts (plots, dataframes, etc.) and returns a result dict.
     """
-    # Debug information
-    print(f"Data type: {type(data)}")
-    print(f"Data shape: {data.shape if hasattr(data, 'shape') else 'No shape attribute'}")
-    print(f"Data columns: {data.columns.tolist() if hasattr(data, 'columns') else 'No columns attribute'}")
-    print(f"Data sample: {data.head(2) if hasattr(data, 'head') else 'Cannot display sample'}")
-
-    eda_agent = EDA_Agent(
+    eda_agent = EDAToolsAgent(
         llm,
         invoke_react_agent_kwargs={"recursion_limit": 10},
     )
@@ -302,7 +273,7 @@ def process_exploratory(question: str, llm, data: pd.DataFrame) -> dict:
 
     eda_agent.invoke_agent(
         user_instructions=question,
-        raw_data=data,
+        data_raw=data,
     )
 
     tool_calls = eda_agent.get_tool_calls()
@@ -405,8 +376,6 @@ if st.session_state["DATA_RAW"] is not None:
     # Use the built-in chat input widget
     question = st.chat_input("Enter your question here:", key="query_input")
     if question:
-        # API key check is already handled above, so we don't need to check again here
-
         with st.spinner("Thinking..."):
             # Add the user's question to the message history
             msgs.add_user_message(question)

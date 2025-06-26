@@ -3,17 +3,22 @@ from langgraph.graph import StateGraph, END
 from langgraph.types import interrupt, Command
 from langgraph.graph.state import CompiledStateGraph
 
-from IPython.display import Image, display
+from langchain_core.runnables import RunnableConfig
+from langgraph.pregel.types import StreamMode
+
 import pandas as pd
 import sqlalchemy as sql
 import json
 
+from typing import Any, Callable, Dict, Type, Optional, Union, List
+
+
+
+from IPython.display import Image, display
+import pandas as pd
+
 from utils.parsing import PythonOutputParser
 from utils.regex import add_comments_to_top, relocate_imports_inside_function, remove_consecutive_duplicates
-
-
-
-
 
 class BaseAgent(CompiledStateGraph):
     """
@@ -22,6 +27,7 @@ class BaseAgent(CompiledStateGraph):
     Provides shared functionality for handling parameters, responses, and state
     graph operations.
     """
+
     def __init__(self, **params):
         """
         Initialize the agent with provided parameters.
@@ -52,15 +58,17 @@ class BaseAgent(CompiledStateGraph):
         """
         Subclasses should override this method to create a specific compiled graph.
         """
-        raise NotImplementedError("Subclasses must implement _make_compiled_graph()")
+        raise NotImplementedError("Subclasses must implement the `_make_compiled_graph` method.")
 
     def update_params(self, **kwargs):
         """
         Update one or more parameters and rebuild the compiled graph.
-        """
-        self.params.update(kwargs)
-        self._compiled_graph = self._make_compiled_graph()
 
+        Parameters:
+            **kwargs: Parameters to update.
+        """
+        self._params.update(kwargs)
+        self._compiled_graph = self._make_compiled_graph()
 
     def __getattr__(self, name: str):
         """
@@ -73,32 +81,35 @@ class BaseAgent(CompiledStateGraph):
             Any: The attribute from the compiled graph.
         """
         return getattr(self._compiled_graph, name)
-    
-    def invoke(self,
-               input,
-               config=None,
-               **kwargs):
-        """Wrapper for self._compiled_graph.invoke()
-        
+
+    def invoke(
+        self, 
+        input: Union[dict[str, Any], Any], 
+        config: Optional[RunnableConfig] = None, 
+        **kwargs
+    ):
+        """
+        Wrapper for self._compiled_graph.invoke()
+
         Parameters:
             input: The input data for the graph. It can be a dictionary or any other type.
             config: Optional. The configuration for the graph run.
             **kwarg: Arguments to pass to self._compiled_graph.invoke()
-            
-        Returns:
-            The agent's response.
-        """
-        self.response = self._compiled_graph.invoke(input, config, **kwargs)
 
+        Returns:
+            Any: The agent's response.
+        """
+        self.response = self._compiled_graph.invoke(input=input, config=config,**kwargs)
+        
         if self.response.get("messages"):
             self.response["messages"] = remove_consecutive_duplicates(self.response["messages"])
+        
         return self.response
     
-
     async def ainvoke(
         self, 
-        input, 
-        config = None, 
+        input: Union[dict[str, Any], Any], 
+        config: Optional[RunnableConfig] = None, 
         **kwargs
     ):
         """
@@ -120,11 +131,11 @@ class BaseAgent(CompiledStateGraph):
         return self.response
     
     def stream(
-            self,
-            input,
-            config=None,
-            stream_mode=None,
-            **kwargs,
+        self,
+        input: dict[str, Any] | Any,
+        config: RunnableConfig | None = None,
+        stream_mode: StreamMode | list[StreamMode] | None = None, 
+        **kwargs
     ):
         """
         Wrapper for self._compiled_graph.stream()
@@ -150,12 +161,11 @@ class BaseAgent(CompiledStateGraph):
         
         return self.response
     
-
     async def astream(
         self,
-        input,
-        config = None,
-        stream_mode = None, 
+        input: dict[str, Any] | Any,
+        config: RunnableConfig | None = None,
+        stream_mode: StreamMode | list[StreamMode] | None = None, 
         **kwargs
     ):
         """
@@ -182,7 +192,6 @@ class BaseAgent(CompiledStateGraph):
         
         return self.response
     
-
     def get_state_keys(self):
         """
         Returns a list of keys that the state graph response contains.
@@ -190,17 +199,17 @@ class BaseAgent(CompiledStateGraph):
         Returns:
             list: A list of keys in the response.
         """
-        return list(self.get_output_jsonschema()["properties"].keys())
-    
-    def get_state_proprties(self):
+        return list(self.get_output_jsonschema()['properties'].keys())
+
+    def get_state_properties(self):
         """
-        Returns the detailed properties of the state graph response.
+        Returns detailed properties of the state graph response.
 
         Returns:
             dict: The properties of the response.
         """
-        return self.get_output_jsonschema()["properties"]
-
+        return self.get_output_jsonschema()['properties']
+    
     def get_state(self, config, *, subgraphs = False):
         """
         Returns the state of the agent.
@@ -218,7 +227,7 @@ class BaseAgent(CompiledStateGraph):
         Updates the state of the agent.
         """
         return self._compiled_graph.update_state(config, values, as_node)
-
+    
     def get_response(self):
         """
         Returns the response generated by the agent.
@@ -227,9 +236,10 @@ class BaseAgent(CompiledStateGraph):
             Any: The agent's response.
         """
         if self.response.get("messages"):
-            self.response["messages"] = remove_consecutive_duplicates(self.response["messages"])
+            self.response["messages"] = remove_consecutive_duplicates(self.response["messages"])  
+        
         return self.response
-    
+
     def show(self, xray: int = 0):
         """
         Displays the agent's state graph as a Mermaid diagram.
@@ -238,25 +248,27 @@ class BaseAgent(CompiledStateGraph):
             xray (int): If set to 1, displays subgraph levels. Defaults to 0.
         """
         display(Image(self.get_graph(xray=xray).draw_mermaid_png()))
+        
+
 
 
 def create_coding_agent_graph(
-    GraphState,
-    node_functions,
-    recommended_steps_node_name,
-    create_code_node_name,
-    execute_code_node_name,
-    fix_code_node_name,
-    explain_code_node_name,
-    error_key,
-    max_retries_key = "max_retries",
-    retry_count_key = "retry_count",
-    human_in_the_loop = False,
-    human_review_node_name = "human_review",
-    checkpointer = None,
-    bypass_recommended_steps = False,
-    bypass_explain_code = False,
-    agent_name = "coding_agent"
+    GraphState: Type,
+    node_functions: Dict[str, Callable],
+    recommended_steps_node_name: str,
+    create_code_node_name: str,
+    execute_code_node_name: str,
+    fix_code_node_name: str,
+    explain_code_node_name: str,
+    error_key: str,
+    max_retries_key: str = "max_retries",
+    retry_count_key: str = "retry_count",
+    human_in_the_loop: bool = False,
+    human_review_node_name: str = "human_review",
+    checkpointer: Optional[Callable] = None,
+    bypass_recommended_steps: bool = False,
+    bypass_explain_code: bool = False,
+    agent_name: str = "coding_agent"
 ):
     """
     Creates a generic agent graph using the provided node functions and node names.
@@ -309,52 +321,51 @@ def create_coding_agent_graph(
     app : langchain.graphs.StateGraph
         The compiled workflow application.
     """
-    # the graph workflow
+
     workflow = StateGraph(GraphState)
-
-    # the nodes
-
-    # always add the create , execute and fix nodes
+    
+    # * NODES
+    
+    # Always add create, execute, and fix nodes
     workflow.add_node(create_code_node_name, node_functions[create_code_node_name])
     workflow.add_node(execute_code_node_name, node_functions[execute_code_node_name])
     workflow.add_node(fix_code_node_name, node_functions[fix_code_node_name])
-
-    # conditionally add the recommended steps node
+    
+    # Conditionally add the recommended-steps node
     if not bypass_recommended_steps:
         workflow.add_node(recommended_steps_node_name, node_functions[recommended_steps_node_name])
-
-    # conditionally add the explain code node
-    if not bypass_explain_code:
-        workflow.add_node(explain_code_node_name, node_functions[explain_code_node_name])
-
-    # conditionally add the human review node
+    
+    # Conditionally add the human review node
     if human_in_the_loop:
         workflow.add_node(human_review_node_name, node_functions[human_review_node_name])
-
-    # the edges
-    #set the entrypoint as the recommended steps node or the create code node
-
-    entrypoint = recommended_steps_node_name if not bypass_recommended_steps else create_code_node_name
-
-    workflow.set_entry_point(entrypoint)
-
+    
+    # Conditionally add the explanation node
+    if not bypass_explain_code:
+        workflow.add_node(explain_code_node_name, node_functions[explain_code_node_name])
+    
+    # * EDGES
+    
+    # Set the entry point
+    entry_point = create_code_node_name if bypass_recommended_steps else recommended_steps_node_name
+    
+    workflow.set_entry_point(entry_point)
+    
     if not bypass_recommended_steps:
         workflow.add_edge(recommended_steps_node_name, create_code_node_name)
     
     workflow.add_edge(create_code_node_name, execute_code_node_name)
     workflow.add_edge(fix_code_node_name, execute_code_node_name)
-
-    # error catching and retry logic based on the retries and max retries possible
-
+    
+    # Define a helper to check if we have an error & can still retry
     def error_and_can_retry(state):
         return (
             state.get(error_key) is not None
-            and state.get(max_retries_key) is not None
             and state.get(retry_count_key) is not None
-            and state[max_retries_key] > state[retry_count_key]
+            and state.get(max_retries_key) is not None
+            and state[retry_count_key] < state[max_retries_key]
         )
-    
-    # case when human in the loop is enabled, we add a branch for human review
+        
+    # If human in the loop, add a branch for human review
     if human_in_the_loop:
         workflow.add_conditional_edges(
             execute_code_node_name,
@@ -364,8 +375,8 @@ def create_coding_agent_graph(
                 "fix_code": fix_code_node_name,
             },
         )
-    # If no human review, the next node is fix_code if error, else explain_code.
     else:
+        # If no human review, the next node is fix_code if error, else explain_code.
         if not bypass_explain_code:
             workflow.add_conditional_edges(
                 execute_code_node_name,
@@ -375,7 +386,6 @@ def create_coding_agent_graph(
                     "explain_code": explain_code_node_name,
                 },
             )
-        #if the explain code is bypassed, the next node is fix_code if error, else END
         else:
             workflow.add_conditional_edges(
                 execute_code_node_name,
@@ -385,33 +395,29 @@ def create_coding_agent_graph(
                     "END": END,
                 },
             )
-
+            
     if not bypass_explain_code:
         workflow.add_edge(explain_code_node_name, END)
-
-    # Finally compile the state graph
+    
+    # Finally, compile
     app = workflow.compile(
         checkpointer=checkpointer,
         name=agent_name,
     )
-
+    
     return app
-            
 
-#######################################
-#  node functions --- to review later #
-#######################################
 
 
 def node_func_human_review(
-    state, 
-    prompt_text, 
-    yes_goto, 
-    no_goto,
-    user_instructions_key = "user_instructions",
-    recommended_steps_key = "recommended_steps",
-    code_snippet_key = "code_snippet",
-    code_type = "python"
+    state: Any, 
+    prompt_text: str, 
+    yes_goto: str, 
+    no_goto: str,
+    user_instructions_key: str = "user_instructions",
+    recommended_steps_key: str = "recommended_steps",
+    code_snippet_key: str = "code_snippet",
+    code_type: str = "python"
 ) -> Command[str]:
     """
     A generic function to handle human review steps.
@@ -463,16 +469,16 @@ def node_func_human_review(
 
 
 def node_func_execute_agent_code_on_data(
-    state, 
-    data_key, 
-    code_snippet_key, 
-    result_key,
-    error_key,
-    agent_function_name,
-    pre_processing = None, 
-    post_processing = None,
-    error_message_prefix = "An error occurred during agent execution: "
-):
+    state: Any, 
+    data_key: str, 
+    code_snippet_key: str, 
+    result_key: str,
+    error_key: str,
+    agent_function_name: str,
+    pre_processing: Optional[Callable[[Any], Any]] = None, 
+    post_processing: Optional[Callable[[Any], Any]] = None,
+    error_message_prefix: str = "An error occurred during agent execution: "
+) -> Dict[str, Any]:
     """
     Execute a generic agent code defined in a code snippet retrieved from the state on input data and return the result.
     
@@ -559,15 +565,15 @@ def node_func_execute_agent_code_on_data(
     return output
 
 def node_func_execute_agent_from_sql_connection(
-    state, 
-    connection, 
-    code_snippet_key, 
-    result_key,
-    error_key,
-    agent_function_name,
-    post_processing = None,
-    error_message_prefix = "An error occurred during agent execution: "
-):
+    state: Any, 
+    connection: Any, 
+    code_snippet_key: str, 
+    result_key: str,
+    error_key: str,
+    agent_function_name: str,
+    post_processing: Optional[Callable[[Any], Any]] = None,
+    error_message_prefix: str = "An error occurred during agent execution: "
+) -> Dict[str, Any]:
     """
     Execute a generic agent code defined in a code snippet retrieved from the state on a SQLAlchemy connection object 
     and return the result.
@@ -638,17 +644,17 @@ def node_func_execute_agent_from_sql_connection(
 
 
 def node_func_fix_agent_code(
-    state, 
-    code_snippet_key, 
-    error_key, 
-    llm, 
-    prompt_template,
-    agent_name,
-    retry_count_key = "retry_count",
-    log = False,
-    file_path = "logs/agent_function.py",
-    function_name = "agent_function"
-):
+    state: Any, 
+    code_snippet_key: str, 
+    error_key: str, 
+    llm: Any, 
+    prompt_template: str,
+    agent_name: str,
+    retry_count_key: str = "retry_count",
+    log: bool = False,
+    file_path: str = "logs/agent_function.py",
+    function_name: str = "agent_function"
+) -> dict:
     """
     Generic function to fix a given piece of agent code using an LLM and a prompt template.
     
@@ -716,16 +722,16 @@ def node_func_fix_agent_code(
     }
 
 def node_func_explain_agent_code(
-    state, 
-    code_snippet_key,
-    result_key,
-    error_key,
-    llm, 
-    role,
-    explanation_prompt_template,
-    success_prefix = "# Agent Explanation:\n\n",
-    error_message = "The agent encountered an error during execution and cannot be explained."
-):
+    state: Any, 
+    code_snippet_key: str,
+    result_key: str,
+    error_key: str,
+    llm: Any, 
+    role: str,
+    explanation_prompt_template: str,
+    success_prefix: str = "# Agent Explanation:\n\n",
+    error_message: str = "The agent encountered an error during execution and cannot be explained."
+) -> Dict[str, Any]:
     """
     Generic function to explain what a given agent code snippet does.
     
@@ -785,12 +791,12 @@ def node_func_explain_agent_code(
 
 
 def node_func_report_agent_outputs(
-    state,
-    keys_to_include,
-    result_key,
-    role,
-    custom_title = "Agent Output Summary"
-):
+    state: Dict[str, Any],
+    keys_to_include: List[str],
+    result_key: str,
+    role: str,
+    custom_title: str = "Agent Output Summary"
+) -> Dict[str, Any]:
     """
     Gathers relevant data directly from the state (filtered by `keys_to_include`) 
     and returns them as a structured message in `state[result_key]`.
@@ -827,5 +833,4 @@ def node_func_report_agent_outputs(
             )
         ]
     }
-
 
