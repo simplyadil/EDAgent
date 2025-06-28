@@ -123,7 +123,7 @@ def render_report_iframe(
 # =============================
 # Hardcoded Google API Key (replace with your actual key)
 # =============================
-GOOGLE_API_KEY = "AIzaSyDUa-_8swPWfOVp2avPaRetesKKyRh0cvw"  # <-- Replace this!
+GOOGLE_API_KEY = "YOUR_API_KEY"
 MODEL_LIST = ["gemini-2.0-flash", "gemini-1.5-pro"]
 MODEL_NAME = MODEL_LIST[0]
 
