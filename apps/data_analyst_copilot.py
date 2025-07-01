@@ -22,7 +22,7 @@ from agents.data_wrangling_agent import DataWranglingAgent
 
 MODEL_LIST = ["gemini-2.0-flash", "gemini-1.5-pro"]
 TITLE = "Pandas Data Analyst AI Copilot"
-GOOGLE_API_KEY = "AIzaSyDUa-_8swPWfOVp2avPaRetesKKyRh0cvw"  # <-- Replace with your actual Gemini API key
+GOOGLE_API_KEY = "YOUR_API_KEY"  # <-- Replace with your actual Gemini API key
 
 genai.configure(api_key=GOOGLE_API_KEY)
 
