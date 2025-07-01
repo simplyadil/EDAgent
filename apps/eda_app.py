@@ -1,11 +1,5 @@
-# BUSINESS SCIENCE
-# Exploratory Data Analysis (EDA) Copilot App
-# -----------------------
+"""Exploratory Data Analysis (EDA) Copilot App"""
 
-# This app helps you search for data and produces exploratory analysis reports.
-
-# Imports
-# !pip install git+https://github.com/business-science/ai-data-science-team.git --upgrade
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -25,7 +19,6 @@ import google.generativeai as genai
 
 
 # Helpers
-
 
 def render_report_iframe(
     report_src, src_type="url", height=620, title="Interactive Report"
@@ -116,13 +109,6 @@ def render_report_iframe(
     components.html(html_code, height=height, scrolling=True)
 
 
-# =============================================================================
-# STREAMLIT APP SETUP (including data upload, API key, etc.)
-# =============================================================================
-
-# =============================
-# Hardcoded Google API Key (replace with your actual key)
-# =============================
 GOOGLE_API_KEY = "YOUR_API_KEY"
 MODEL_LIST = ["gemini-2.0-flash", "gemini-1.5-pro"]
 MODEL_NAME = MODEL_LIST[0]
@@ -194,9 +180,7 @@ else:
 model_option = st.sidebar.selectbox("Choose Gemini model", MODEL_LIST, index=0)
 llm = ChatGoogleGenerativeAI(model=model_option, google_api_key=GOOGLE_API_KEY)
 
-# =============================================================================
 # CHAT MESSAGE HISTORY AND ARTIFACT STORAGE
-# =============================================================================
 
 msgs = StreamlitChatMessageHistory(key="langchain_messages")
 if len(msgs.messages) == 0:
@@ -254,10 +238,8 @@ def display_chat_history():
                             st.write("Artifact of unknown type.")
 
 
-# =============================================================================
-# PROCESS AGENTS AND ARTIFACTS
-# =============================================================================
 
+# PROCESS AGENTS AND ARTIFACTS
 
 def process_exploratory(question: str, llm, data: pd.DataFrame) -> dict:
     """
@@ -368,9 +350,7 @@ def process_exploratory(question: str, llm, data: pd.DataFrame) -> dict:
     return result
 
 
-# =============================================================================
-# MAIN INTERACTION: GET USER QUESTION AND HANDLE RESPONSE
-# =============================================================================
+# main interaction
 
 if st.session_state["DATA_RAW"] is not None:
     # Use the built-in chat input widget
@@ -499,8 +479,5 @@ if st.session_state["DATA_RAW"] is not None:
                 st.session_state["chat_artifacts"][msg_index] = artifact_list
 
 
-# =============================================================================
-# FINAL RENDER: DISPLAY THE COMPLETE CHAT HISTORY WITH ARTIFACTS
-# =============================================================================
-
+# final render
 display_chat_history()
