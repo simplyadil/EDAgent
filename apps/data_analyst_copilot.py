@@ -1,4 +1,4 @@
-"""Data Analysis Copilot"""
+"""Enhanced Data Analysis Copilot with Database Support"""
 
 import streamlit as st
 import pandas as pd
@@ -6,6 +6,8 @@ import plotly.io as pio
 import json
 import sys
 import os
+import sqlalchemy as sql
+from sqlalchemy import create_engine, text
 
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -16,13 +18,11 @@ from agents.data_analyst_agent import DataAnalysisAgent
 from agents.data_visualization_agent import DataVisualizationAgent
 from agents.data_wrangling_agent import DataWranglingAgent
 
-
-
 # * APP INPUTS ----
 
 MODEL_LIST = ["gemini-2.0-flash", "gemini-1.5-pro"]
 TITLE = "Pandas Data Analyst AI Copilot"
-GOOGLE_API_KEY = "YOUR_API_KEY"  # <-- Replace with your actual Gemini API key
+GOOGLE_API_KEY = "AIzaSyDUa-_8swPWfOVp2avPaRetesKKyRh0cvw"
 
 genai.configure(api_key=GOOGLE_API_KEY)
 
@@ -37,19 +37,22 @@ st.set_page_config(
 st.title(TITLE)
 
 st.markdown("""
-Welcome to the Pandas Data Analyst AI. Upload a CSV or Excel file and ask questions about the data.  
+Welcome to the Enhanced Pandas Data Analyst AI. Choose to upload a file or connect to a database, then ask questions about your data.  
 The AI agent will analyze your dataset and return either data tables or interactive charts.
 """)
 
 with st.expander("Example Questions", expanded=False):
     st.write(
         """
-        ##### Bikes Data Set:
+        ##### For File Data:
+        - Show the top 5 bike models by extended sales.
+        - Show the top 5 bike models by extended sales in a bar chart.
+        - Make a plot of extended sales by month for each bike model.
         
-        -  Show the top 5 bike models by extended sales.
-        -  Show the top 5 bike models by extended sales in a bar chart.
-        -  Show the top 5 bike models by extended sales in a pie chart.
-        -  Make a plot of extended sales by month for each bike model. Use a color to identify the bike models.
+        ##### For Database Data:
+        - Show me the monthly revenue trends from the sales table.
+        - Which customers have the highest order values?
+        - Create a chart showing product performance by region.
         """
     )
 
@@ -60,30 +63,140 @@ with st.expander("Example Questions", expanded=False):
 model_option = st.sidebar.selectbox("Choose Gemini model", MODEL_LIST, index=0)
 llm = ChatGoogleGenerativeAI(model=model_option, google_api_key=GOOGLE_API_KEY)
 
-
 # ---------------------------
-# File Upload and Data Preview
+# Data Source Selection
 # ---------------------------
 
-st.markdown("""
-Upload a CSV or Excel file and ask questions about your data.  
-The AI agent will analyze your dataset and return either data tables or interactive charts.
-""")
+st.markdown("## Choose Your Data Source")
 
-uploaded_file = st.file_uploader(
-    "Choose a CSV or Excel file", type=["csv", "xlsx", "xls"]
+data_source = st.radio(
+    "Select data source:",
+    ["Upload File", "Connect to Database"],
+    horizontal=True
 )
-if uploaded_file is not None:
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
 
-    st.subheader("Data Preview")
-    st.dataframe(df.head())
+# Initialize variables
+if 'df' not in st.session_state:
+    st.session_state.df = None
+if 'connection' not in st.session_state:
+    st.session_state.connection = None
+if 'data_source_type' not in st.session_state:
+    st.session_state.data_source_type = 'file'
+
+df = st.session_state.df
+connection = st.session_state.connection
+data_source_type = st.session_state.data_source_type
+
+if data_source == "Upload File":
+    # ---------------------------
+    # File Upload Section
+    # ---------------------------
+    
+    uploaded_file = st.file_uploader(
+        "Choose a CSV or Excel file", type=["csv", "xlsx", "xls"]
+    )
+    
+    if uploaded_file is not None:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+        st.session_state.df = df
+        st.session_state.data_source_type = "file"
+        st.subheader("Data Preview")
+        st.dataframe(df.head())
+        data_source_type = "file"
+    else:
+        st.info("Please upload a CSV or Excel file to get started.")
+        st.stop()
+
 else:
-    st.info("Please upload a CSV or Excel file to get started.")
-    st.stop()
+    # ---------------------------
+    # Database Connection Section  
+    # ---------------------------
+    
+    st.markdown("### Database Connection")
+    
+    # Database type selection
+    db_type = st.selectbox(
+        "Database Type:",
+        ["PostgreSQL", "SQLite"]
+    )
+    
+    # Connection parameters based on database type
+    if db_type == "SQLite":
+        db_file = st.text_input("SQLite Database File Path:", value="database.db")
+        if st.button("Connect to SQLite"):
+            try:
+                connection_string = f"sqlite:///{db_file}"
+                connection = create_engine(connection_string)
+                with connection.connect() as conn:
+                    result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table';"))
+                    tables = [row[0] for row in result.fetchall()]
+                st.success(f"Connected to SQLite database! Found {len(tables)} tables.")
+                st.write("Available tables:", tables)
+                st.session_state.connection = connection
+                st.session_state.data_source_type = "database"
+                data_source_type = "database"
+            except Exception as e:
+                st.error(f"Connection failed: {str(e)}")
+                st.stop()
+    
+    elif db_type == "PostgreSQL":
+        col1, col2 = st.columns(2)
+        with col1:
+            host = st.text_input("Host:", value="localhost")
+            database = st.text_input("Database Name:")
+            username = st.text_input("Username:")
+        with col2:
+            port = st.number_input("Port:", value=5432)
+            password = st.text_input("Password:", type="password")
+        if st.button(f"Connect to {db_type}"):
+            try:
+                connection_string = f"postgresql://{username}:{password}@{host}:{port}/{database}"
+                connection = create_engine(connection_string)
+                with connection.connect() as conn:
+                    result = conn.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';"))
+                    tables = [row[0] for row in result.fetchall()]
+                st.success(f"Connected to {db_type} database! Found {len(tables)} tables.")
+                st.write("Available tables:", tables)
+                st.session_state.connection = connection
+                st.session_state.data_source_type = "database"
+                data_source_type = "database"
+            except Exception as e:
+                st.error(f"❌ Connection failed: {str(e)}")
+                st.info("Make sure your database is running and credentials are correct.")
+                st.stop()
+    
+    # If we have a database connection, show a preview
+    if connection is not None:
+        st.markdown("### Database Preview")
+        
+        # Let user pick a table to preview
+        try:
+            with connection.connect() as conn:
+                # Get table names (this is database-agnostic)
+                inspector = sql.inspect(connection)
+                tables = inspector.get_table_names()
+                
+                if tables:
+                    preview_table = st.selectbox("Select table to preview:", tables)
+                    
+                    if preview_table:
+                        # Show table preview
+                        preview_query = f"SELECT * FROM {preview_table} LIMIT 5"
+                        df_preview = pd.read_sql(preview_query, connection)
+                        st.dataframe(df_preview)
+                        
+                        # Show table info
+                        info_query = f"SELECT COUNT(*) as row_count FROM {preview_table}"
+                        row_count = pd.read_sql(info_query, connection).iloc[0, 0]
+                        st.info(f"Table '{preview_table}' has {row_count:,} rows")
+                else:
+                    st.warning("No tables found in the database.")
+                    
+        except Exception as e:
+            st.warning(f"Could not preview tables: {str(e)}")
 
 # ---------------------------
 # Initialize Chat Message History and Storage
@@ -127,6 +240,8 @@ display_chat_history()
 
 LOG = False
 
+
+# Initialize the agent (same agent handles both modes)
 pandas_data_analyst = DataAnalysisAgent(
     model=llm,
     data_wrangling_agent=DataWranglingAgent(
@@ -152,18 +267,27 @@ if question := st.chat_input("Enter your question here:", key="query_input"):
         msgs.add_user_message(question)
 
         try:
-            pandas_data_analyst.invoke_agent(
-                user_instructions=question,
-                data_raw=df,
-            )
+            if data_source_type == "database":
+                # For database queries, pass the connection inside data_raw
+                pandas_data_analyst.invoke_agent(
+                    user_instructions=question,
+                    data_raw={"connection": connection},
+                    data_source_type="database"
+                )
+            else:
+                # For file uploads, use the original approach
+                pandas_data_analyst.invoke_agent(
+                    user_instructions=question,
+                    data_raw=df,
+                    data_source_type="file"
+                )
             result = pandas_data_analyst.get_response()
+            
         except Exception as e:
-            st.chat_message("ai").write(
-                "An error occurred while processing your query. Please try again."
-            )
-            msgs.add_ai_message(
-                "An error occurred while processing your query. Please try again."
-            )
+            error_msg = f"An error occurred while processing your query: {str(e)}"
+            st.chat_message("ai").write(error_msg)
+            msgs.add_ai_message(error_msg)
+            st.error(f"Error details: {str(e)}\nPlease check your question and try again. For database queries, ensure table names and columns are correct.")
             st.stop()
 
         routing = result.get("routing_preprocessor_decision")
@@ -178,7 +302,10 @@ if question := st.chat_input("Enter your question here:", key="query_input"):
                 else:
                     plot_json = plot_data
                 plot_obj = pio.from_json(plot_json)
-                response_text = "Returning the generated chart."
+                
+                data_source_label = "database" if data_source_type == "database" else "uploaded file"
+                response_text = f"Here's your chart based on the {data_source_label} data:"
+                
                 # Store the chart
                 plot_index = len(st.session_state.plots)
                 st.session_state.plots.append(plot_obj)
@@ -187,28 +314,33 @@ if question := st.chat_input("Enter your question here:", key="query_input"):
                 st.chat_message("ai").write(response_text)
                 st.plotly_chart(plot_obj)
             else:
-                st.chat_message("ai").write("The agent did not return a valid chart.")
-                msgs.add_ai_message("The agent did not return a valid chart.")
+                st.chat_message("ai").write("I couldn't generate a valid chart from your request.")
+                msgs.add_ai_message("I couldn't generate a valid chart from your request.")
 
         elif routing == "table":
             # Process table result
             data_wrangled = result.get("data_wrangled")
             if data_wrangled is not None:
-                response_text = "Returning the data table."
-                # Ensure data_wrangled is a DataFrame
-                if not isinstance(data_wrangled, pd.DataFrame):
-                    data_wrangled = pd.DataFrame(data_wrangled)
+                data_source_label = "database" if data_source_type == "database" else "uploaded file"
+                response_text = f"Here's your data table based on the {data_source_label}:"
+
+                # Always convert to DataFrame for display
+                try:
+                    display_df = pd.DataFrame(data_wrangled)
+                except Exception:
+                    display_df = pd.DataFrame({"Result": [data_wrangled]})
+
                 df_index = len(st.session_state.dataframes)
-                st.session_state.dataframes.append(data_wrangled)
+                st.session_state.dataframes.append(display_df)
                 msgs.add_ai_message(response_text)
                 msgs.add_ai_message(f"DATAFRAME_INDEX:{df_index}")
                 st.chat_message("ai").write(response_text)
-                st.dataframe(data_wrangled)
+                st.dataframe(display_df)
             else:
-                st.chat_message("ai").write("No table data was returned by the agent.")
-                msgs.add_ai_message("No table data was returned by the agent.")
+                st.chat_message("ai").write("No table data was returned. Please try rephrasing your question.")
+                msgs.add_ai_message("No table data was returned. Please try rephrasing your question.")
         else:
-            # Fallback if routing decision is unclear or if chart error occurred
+            # Fallback handling
             data_wrangled = result.get("data_wrangled")
             if data_wrangled is not None:
                 response_text = (
@@ -225,7 +357,23 @@ if question := st.chat_input("Enter your question here:", key="query_input"):
                 st.dataframe(data_wrangled)
             else:
                 response_text = (
-                    "An error occurred while processing your query. Please try again."
+                    "An error occurred while processing your query. Please try again. check if your "
+                    f"{'database tables' if data_source_type == 'database' else 'data'} contain the information you're looking for."
                 )
                 msgs.add_ai_message(response_text)
                 st.chat_message("ai").write(response_text)
+
+# ---------------------------
+# Sidebar Information
+# ---------------------------
+
+with st.sidebar:
+    st.markdown("### Current Data Source")
+    if data_source_type == "database":
+        st.success("Connected to Database")
+        if connection:
+            st.write("Connection active")
+    else:
+        st.success("File Upload Mode")
+        if df is not None:
+            st.write(f"Loaded: {len(df)} rows, {len(df.columns)} columns")
