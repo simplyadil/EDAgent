@@ -521,6 +521,9 @@ def node_func_execute_agent_code_on_data(
     # Preprocessing: If no pre-processing function is given, attempt a default handling
     if pre_processing is None:
         if isinstance(data, dict):
+            # Wrap dict of scalars to list for valid DataFrame creation
+            if all(not isinstance(v, (list, tuple, pd.Series)) for v in data.values()):
+                data = [data]
             df = pd.DataFrame.from_dict(data)
         elif isinstance(data, list):
             df = [pd.DataFrame.from_dict(item) for item in data]

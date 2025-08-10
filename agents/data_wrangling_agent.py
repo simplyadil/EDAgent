@@ -567,7 +567,17 @@ def make_data_wrangling_agent(
             raise ValueError("data_raw must be a dict or a list of dicts.")
 
         # Convert all datasets to DataFrames for inspection
-        dataframes = {name: pd.DataFrame.from_dict(d) for name, d in datasets.items()}
+        # for name, d in datasets.items():
+        #     print(f"Dataset name: {name}")
+        #     print(f"Type: {type(d)}")
+        #     print(f"Content preview: {str(d)[:200]}")
+        # dataframes = {name: pd.DataFrame.from_dict(d) for name, d in datasets.items()}
+        dataframes = {}
+        for name, d in datasets.items():
+            # Fix for scalar-only dicts: wrap in a list to avoid ValueError
+            if isinstance(d, dict) and all(not isinstance(v, (list, tuple, pd.Series)) for v in d.values()):
+                d = [d]
+            dataframes[name] = pd.DataFrame.from_dict(d)
 
         # Create a summary for all datasets
         # We'll include a short sample and info for each dataset
@@ -640,7 +650,18 @@ def make_data_wrangling_agent(
                 raise ValueError("data_raw must be a dict or a list of dicts.")
 
             # Convert all datasets to DataFrames for inspection
-            dataframes = {name: pd.DataFrame.from_dict(d) for name, d in datasets.items()}
+            # for name, d in datasets.items():
+            #     print(f"Dataset name: {name}")
+            #     print(f"Type: {type(d)}")
+            #     print(f"Content preview: {str(d)[:200]}")
+            # dataframes = {name: pd.DataFrame.from_dict(d) for name, d in datasets.items()}
+
+            dataframes = {}
+            for name, d in datasets.items():
+                # Fix for scalar-only dicts: wrap in a list to avoid ValueError
+                if isinstance(d, dict) and all(not isinstance(v, (list, tuple, pd.Series)) for v in d.values()):
+                    d = [d]
+                dataframes[name] = pd.DataFrame.from_dict(d)
 
             # Create a summary for all datasets
             # We'll include a short sample and info for each dataset
