@@ -6,4 +6,10 @@ google-generativeai      # Gemini API access
 pandas                   # Data manipulation
 plotly                   # Interactive visualizations
 missingno                # Missing data visualization
+sqlalchemy>=2.0.0        # Core database connectivity
+psycopg2-binary>=2.9.0   # PostgreSQL Database driver
+#asyncpg>=0.28.0         # Alternative PostgreSQL driver
+PyMySQL>=1.0.0           # MySQL
+# mysqlclient>=2.2.0     # Alternative MySQL driver 
+alembic>=1.12.0          # For database migrations if needed
 

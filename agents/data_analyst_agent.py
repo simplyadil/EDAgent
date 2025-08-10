@@ -55,39 +55,56 @@ class DataAnalysisAgent(BaseAgent):
             self._params[k] = v
         self._compiled_graph = self._make_compiled_graph()
 
-    async def ainvoke_agent(self,
-                      user_instructions,
-                      data_raw,
-                      max_retries = 3,
-                      retry_count = 0,
-                     **kwargs):
-        response = await self._compiled_graph.ainvoke(
-            {
-                "user_instructions": user_instructions,
-                "data_raw": self._convert_data_input(data_raw),
-                "max_retries": max_retries,
-                "retry_count": retry_count,
-            },**kwargs,)
-        if response.get("messages"):
-            response["messages"] = remove_consecutive_duplicates(response["messages"])
-        self.response = response
-
     def invoke_agent(self,
-                      user_instructions,
-                      data_raw,
-                      max_retries = 3,
-                      retry_count = 0,
-                     **kwargs):
-        response = self._compiled_graph.invoke(
-            {
-                "user_instructions": user_instructions,
-                "data_raw": self._convert_data_input(data_raw),
-                "max_retries": max_retries,
-                "retry_count": retry_count,
-            },**kwargs,)
+                user_instructions,
+                data_raw,
+                max_retries=3,
+                retry_count=0,
+                data_source_type="file",
+                **kwargs):
+
+        input_dict = {
+            "user_instructions": user_instructions,
+            "data_raw": self._convert_data_input(data_raw),
+            "max_retries": max_retries,
+            "retry_count": retry_count,
+            "data_source_type": data_source_type,
+        
+        }
+        # Handle database connection if present
+        if isinstance(data_raw, dict) and "connection" in data_raw:
+            input_dict["connection"] = data_raw["connection"]
+        response = self._compiled_graph.invoke(input_dict, **kwargs)
         if response.get("messages"):
             response["messages"] = remove_consecutive_duplicates(response["messages"])
         self.response = response
+        return response
+
+    async def ainvoke_agent(self,
+                        user_instructions,
+                        data_raw,
+                        max_retries=3,
+                        retry_count=0,
+                        data_source_type="file",
+                        **kwargs):
+
+        input_dict = {
+            "user_instructions": user_instructions,
+            "data_raw": self._convert_data_input(data_raw),
+            "max_retries": max_retries,
+            "retry_count": retry_count,
+            "data_source_type": data_source_type,
+        }
+        
+        # Handle database connection if present
+        if isinstance(data_raw, dict) and "connection" in data_raw:
+            input_dict["connection"] = data_raw["connection"]
+        
+        response = await self._compiled_graph.ainvoke(input_dict, **kwargs)
+        if response.get("messages"):
+            response["messages"] = remove_consecutive_duplicates(response["messages"])
+        self.response = response
+        return response
 
 
     def get_data_wrangled(self):
@@ -127,14 +144,19 @@ class DataAnalysisAgent(BaseAgent):
 
     @staticmethod
     def _convert_data_input(data_raw):
-        if isinstance(data_raw, pd.DataFrame):
-            return data_raw.to_dict()
-        elif isinstance(data_raw, dict):
+        # Handle database connection case
+        if isinstance(data_raw, dict) and "connection" in data_raw:
             return data_raw
+        
+        # Original conversion logic for other cases
+        if isinstance(data_raw, pd.DataFrame):
+            return data_raw.to_dict(orient="records")
+        elif isinstance(data_raw, dict):
+            return [data_raw]
         elif isinstance(data_raw, list):
-            return [item.to_dict() if isinstance(item, pd.DataFrame) else item for item in data_raw]
+            return [item.to_dict(orient="records") if isinstance(item, pd.DataFrame) else item for item in data_raw]
         else:
-            raise ValueError("Invalid data input. Must be a pandas DataFrame or a dictionary or a list of DataFrames/dicts.")
+            return [{"Result": data_raw}]
         
 
 
@@ -184,6 +206,8 @@ def make_data_analysis_agent(
         plotly_error: str
         max_retries: int
         retry_count: int
+        data_source_type: str
+        connection: Any
 
     def preprocess_routing(state: PrimaryState):
         print("---- Data Analysis Agent ----")
@@ -209,6 +233,8 @@ def make_data_analysis_agent(
         response = data_wrangling_agent.invoke({
             "user_instructions": state.get("user_instructions_data_wrangling"),
             "data_raw": state.get("data_raw"),
+            "connection": state.get("connection"),
+            "data_source_type": state.get("data_source_type", "file"),
             "max_retries": state.get("max_retries"),
             "retry_count": state.get("retry_count"),
         })
@@ -218,7 +244,6 @@ def make_data_analysis_agent(
             "data_wrangled": response.get("data_wrangled"),
             "data_wrangler_function": response.get("data_wrangler_function"),
             "plotly_error": response.get("data_visualization_error"),
-            
         }
     
 
