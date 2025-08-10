@@ -1,4 +1,4 @@
-"""Enhanced Data Analysis Copilot with Database Support"""
+"""Data Analysis Copilot"""
 
 import traceback
 import streamlit as st
@@ -7,8 +7,6 @@ import plotly.io as pio
 import json
 import sys
 import os
-import sqlalchemy as sql
-from sqlalchemy import create_engine, text
 
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -47,15 +45,12 @@ The AI agent will analyze your dataset and return either data tables or interact
 with st.expander("Example Questions", expanded=False):
     st.write(
         """
-        ##### For File Data:
-        - Show the top 5 bike models by extended sales.
-        - Show the top 5 bike models by extended sales in a bar chart.
-        - Make a plot of extended sales by month for each bike model.
+        ##### Bikes Data Set:
         
-        ##### For Database Data:
-        - Show me the monthly revenue trends from the sales table.
-        - Which customers have the highest order values?
-        - Create a chart showing product performance by region.
+        -  Show the top 5 bike models by extended sales.
+        -  Show the top 5 bike models by extended sales in a bar chart.
+        -  Show the top 5 bike models by extended sales in a pie chart.
+        -  Make a plot of extended sales by month for each bike model. Use a color to identify the bike models.
         """
     )
 
@@ -67,7 +62,6 @@ model_option = st.sidebar.selectbox("Choose Gemini model", MODEL_LIST, index=0)
 llm = ChatGoogleGenerativeAI(model=model_option, google_api_key=GOOGLE_API_KEY)
 
 # ---------------------------
-# Data Source Selection
 # Data Source Selection
 # ---------------------------
 
@@ -190,8 +184,6 @@ display_chat_history()
 
 LOG = False
 
-
-# Initialize the agent (same agent handles both modes)
 pandas_data_analyst = DataAnalysisAgent(
     model=llm,
     data_wrangling_agent=DataWranglingAgent(
@@ -259,10 +251,7 @@ if question := st.chat_input("Enter your question here:", key="query_input"):
                 else:
                     plot_json = plot_data
                 plot_obj = pio.from_json(plot_json)
-                
-                data_source_label = "database" if data_source_type == "database" else "uploaded file"
-                response_text = f"Here's your chart based on the {data_source_label} data:"
-                
+                response_text = "Returning the generated chart."
                 # Store the chart
                 plot_index = len(st.session_state.plots)
                 st.session_state.plots.append(plot_obj)
@@ -271,33 +260,28 @@ if question := st.chat_input("Enter your question here:", key="query_input"):
                 st.chat_message("ai").write(response_text)
                 st.plotly_chart(plot_obj)
             else:
-                st.chat_message("ai").write("I couldn't generate a valid chart from your request.")
-                msgs.add_ai_message("I couldn't generate a valid chart from your request.")
+                st.chat_message("ai").write("The agent did not return a valid chart.")
+                msgs.add_ai_message("The agent did not return a valid chart.")
 
         elif routing == "table":
             # Process table result
             data_wrangled = result.get("data_wrangled")
             if data_wrangled is not None:
-                data_source_label = "database" if data_source_type == "database" else "uploaded file"
-                response_text = f"Here's your data table based on the {data_source_label}:"
-
-                # Always convert to DataFrame for display
-                try:
-                    display_df = pd.DataFrame(data_wrangled)
-                except Exception:
-                    display_df = pd.DataFrame({"Result": [data_wrangled]})
-
+                response_text = "Returning the data table."
+                # Ensure data_wrangled is a DataFrame
+                if not isinstance(data_wrangled, pd.DataFrame):
+                    data_wrangled = pd.DataFrame(data_wrangled)
                 df_index = len(st.session_state.dataframes)
-                st.session_state.dataframes.append(display_df)
+                st.session_state.dataframes.append(data_wrangled)
                 msgs.add_ai_message(response_text)
                 msgs.add_ai_message(f"DATAFRAME_INDEX:{df_index}")
                 st.chat_message("ai").write(response_text)
-                st.dataframe(display_df)
+                st.dataframe(data_wrangled)
             else:
-                st.chat_message("ai").write("No table data was returned. Please try rephrasing your question.")
-                msgs.add_ai_message("No table data was returned. Please try rephrasing your question.")
+                st.chat_message("ai").write("No table data was returned by the agent.")
+                msgs.add_ai_message("No table data was returned by the agent.")
         else:
-            # Fallback handling
+            # Fallback if routing decision is unclear or if chart error occurred
             data_wrangled = result.get("data_wrangled")
             if data_wrangled is not None:
                 response_text = (
@@ -314,23 +298,7 @@ if question := st.chat_input("Enter your question here:", key="query_input"):
                 st.dataframe(data_wrangled)
             else:
                 response_text = (
-                    "An error occurred while processing your query. Please try again. check if your "
-                    f"{'database tables' if data_source_type == 'database' else 'data'} contain the information you're looking for."
+                    "An error occurred while processing your query. Please try again."
                 )
                 msgs.add_ai_message(response_text)
                 st.chat_message("ai").write(response_text)
-
-# ---------------------------
-# Sidebar Information
-# ---------------------------
-
-with st.sidebar:
-    st.markdown("### Current Data Source")
-    if data_source_type == "database":
-        st.success("Connected to Database")
-        if connection:
-            st.write("Connection active")
-    else:
-        st.success("File Upload Mode")
-        if df is not None:
-            st.write(f"Loaded: {len(df)} rows, {len(df.columns)} columns")
