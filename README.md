@@ -76,12 +76,7 @@ Features:
 - Ask natural language questions about your dataset
 - View generated visualizations and reports
 
-#### Terminal Demo
 
-Run the command-line interface:
-```bash
-python eda_terminal_demo.py "Describe the dataset"
-```
 
 ## Usage Examples
 
